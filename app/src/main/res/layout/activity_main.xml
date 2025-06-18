@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/id_hw"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_hw" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/textView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Group(udp) IP"
+                    tools:text="Group(udp) IP" />
+
+                <EditText
+                    android:id="@+id/id_groupip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ems="10"
+                    android:inputType="textUri"
+                    android:text="224.5.1.7"
+                    tools:text="224.5.1.7" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/textView2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Port"
+                    tools:text="Port" />
+
+                <EditText
+                    android:id="@+id/id_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ems="10"
+                    android:inputType="number"
+                    android:text="22324"
+                    tools:text="22324" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/id_recv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="start Receive"
+            android:onClick="onClick_recv"
+            tools:text="start Receive" />
+
+        <TextView
+            android:id="@+id/textView4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="my nick name:"
+            tools:text="my nick name:" />
+
+        <EditText
+            android:id="@+id/id_nick"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ems="10"
+            android:inputType="textPersonName"
+            android:text="zhang3"
+            tools:text="zhang3" />
+
+        <EditText
+            android:id="@+id/id_msg1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ems="10"
+            android:inputType="textPersonName"
+            android:text="hello"
+            tools:text="hello" />
+
+        <Button
+            android:id="@+id/id_sendit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Send it"
+            android:onClick="onClick_send"
+            tools:text="Send it" />
+
+        <Button
+            android:id="@+id/id_talk"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:onClick="onClick_talk"
+            android:text="PUSH to TALK" />
+
+        <Button
+            android:id="@+id/id_replay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:onClick="onClick_playvoice"
+            android:text="play last voice" />
+
+        <TextView
+            android:id="@+id/id_msgs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="log of msgs" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
