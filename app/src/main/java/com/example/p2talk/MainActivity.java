@@ -9,7 +9,6 @@ import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
@@ -33,7 +32,7 @@ public class MainActivity extends AppCompatActivity {
     MulticastSocket ms1=null;
 
     MediaRecorder rec = null;
-    int isrecording = 0;
+    int isRecording = 0;
     FileInputStream insd;  // read in sound
     byte[] buff1;  // local sent
     byte[] buff2;  // remote recved
@@ -212,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
     public void onClick_talk(View view) {
         // https://blog.csdn.net/qq_24349189/article/details/78573477
 
-        if (isrecording==0) {
+        if (isRecording ==0) {
             try {
                 rec = new MediaRecorder();
                 rec.setOnErrorListener(new MediaRecorder.OnErrorListener() {
@@ -244,7 +243,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 rec.prepare();
                 rec.start();
-                isrecording=1;
+                isRecording =1;
                 ((Button)findViewById(R.id.id_talk)).setText("rec...");
             }
             catch(Exception e) {
@@ -270,7 +269,7 @@ public class MainActivity extends AppCompatActivity {
             Log.e("ptalk ", "rec len "+blen1);
 
             ((Button)findViewById(R.id.id_talk)).setText("push 2 talk"); // restore button text
-            isrecording = 0;
+            isRecording = 0;
 
             onClick_talk2send(view);  // send buff over multicast
 
