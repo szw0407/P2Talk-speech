@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">P2Talk</string>
-    <string name="app_hw">Hello World!</string>
+    <string name="app_name">实时语音通话</string>
+    <string name="app_hw">实时语音通讯应用</string>
 </resources>

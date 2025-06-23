@@ -3,11 +3,11 @@ package com.example.p2talk;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -16,6 +16,14 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Switch;
+import android.widget.CompoundButton;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.os.VibratorManager;
+import android.os.VibrationEffect;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -24,12 +32,19 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
+import java.net.DatagramSocket;
+import java.nio.ByteBuffer;
 
 public class MainActivity extends AppCompatActivity {
 
-    TextView hint, msgs, group, port, msg0, nick;
+    TextView hint, msgs, group, port, msg0, nick, peerIp, peerPort;
     String logs="";
     MulticastSocket ms1=null;
+    DatagramSocket unicastSocket = null;
+    boolean isMulticastMode = true; // 默认使用多播模式
+    Switch modeSwitch;
+    ImageView waveformView;
+    Animation waveAnimation;
 
     MediaRecorder rec = null;
     int isRecording = 0;
@@ -40,23 +55,68 @@ public class MainActivity extends AppCompatActivity {
     int blen1=0;
     int blen2=0;
     MediaPlayer mplayer = null;
+    ByteBuffer soundBuffer; // 用于内存中传输音频
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        hint =findViewById(R.id.id_hw);
-            hint.setText("push to talk using multicast over wifi");
-        msgs =findViewById(R.id.id_msgs);
-            msgs.setText("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
-        group=findViewById(R.id.id_groupip);
-        port =findViewById(R.id.id_port);
-        msg0 =findViewById(R.id.id_msg1);
-        nick =findViewById(R.id.id_nick);
+        // 初始化UI组件
+        hint = findViewById(R.id.id_hw);
+        hint.setText("实时语音通话应用");
+        msgs = findViewById(R.id.id_msgs);
+        msgs.setText("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+        group = findViewById(R.id.id_groupip);
+        port = findViewById(R.id.id_port);
+        msg0 = findViewById(R.id.id_msg1);
+        nick = findViewById(R.id.id_nick);
+        
+        // 初始化单播模式的组件
+        peerIp = findViewById(R.id.id_peer_ip);
+        peerPort = findViewById(R.id.id_peer_port);
+        
+        // 初始化动画组件
+        waveformView = findViewById(R.id.waveform_view);
+        waveformView.setBackgroundResource(R.drawable.waveform_background);
+        waveAnimation = AnimationUtils.loadAnimation(this, R.anim.wave_animation);
+        
+        // 初始化模式切换开关
+        modeSwitch = findViewById(R.id.mode_switch);
+        modeSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                isMulticastMode = isChecked;
+                findViewById(R.id.multicast_layout).setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                findViewById(R.id.unicast_layout).setVisibility(isChecked ? View.GONE : View.VISIBLE);
+                
+                // 更新按钮状态
+                if (ms1 != null || unicastSocket != null) {
+                    ((Button)findViewById(R.id.id_sendit)).setEnabled(true);
+                    ((Button)findViewById(R.id.id_talk)).setEnabled(true);
+                }
+            }
+        });
+        
+        // 分配内存缓冲区用于音频数据
+        soundBuffer = ByteBuffer.allocate(sinmax);
 
         ((Button)findViewById(R.id.id_sendit)).setEnabled(false);
         ((Button)findViewById(R.id.id_talk)).setEnabled(false);
+        
+        // 按住说话功能
+        Button talkBtn = findViewById(R.id.id_talk);
+        talkBtn.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, android.view.MotionEvent event) {
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                    startRecord();
+                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                    stopRecord();
+                }
+                return false;
+            }
+        });
     }
 
     // https://segmentfault.com/a/1190000005926314
@@ -77,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void onClick_recv(View view)
     {
-        // andr6+ https://blog.csdn.net/weixin_44720673/article/details/116205305
+        // 请求必要的权限
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
@@ -94,97 +154,197 @@ public class MainActivity extends AppCompatActivity {
                     new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
         }
 
+        // 禁用设置相关的UI
         group.setEnabled(false);
         port.setEnabled(false);
+        peerIp.setEnabled(false);
+        peerPort.setEnabled(false);
         findViewById(R.id.id_recv).setEnabled(false);
-        new Thread()
-        {
+        modeSwitch.setEnabled(false);
+        
+        // 根据当前模式启动相应的接收线程
+        if (isMulticastMode) {
+            startMulticastReceiver();
+        } else {
+            startUnicastReceiver();
+        }
+        
+        // 启用发送和通话按钮
+        ((Button)findViewById(R.id.id_sendit)).setEnabled(true);
+        ((Button)findViewById(R.id.id_talk)).setEnabled(true);
+    }
+    
+    // 启动多播接收线程
+    private void startMulticastReceiver() {
+        new Thread() {
             @Override
             public void run()  {
                 try{
                     ms1 = new MulticastSocket(Integer.parseInt(port.getText().toString()));  // port
-                    //groupip = ;
-                    //portstr = port.getText().toString();
                     ms1.joinGroup(InetAddress.getByName(group.getText().toString()));  // join group ip
                     ms1.setTimeToLive(2);
-                    //ms0.setSoTimeout(100);
-                    System.out.println("bind "+group.getText().toString()+":"+port.getText().toString());
-                    while (true){
-                        byte[] msg0 = new byte[65*1024];  // max 64k maybe
-                        DatagramPacket dp1=new DatagramPacket(msg0, msg0.length);
+                    
+                    logs = "已连接到多播组: " + group.getText().toString() + ":" + port.getText().toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
+                    
+                    while (true) {                        byte[] msg0 = new byte[65*1024];  // max 64k maybe
+                        DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
                         ms1.receive(dp1);
-                        if (dp1.getLength() < 500){  // text
-                            //logs=new String(msg0, "utf-8")+"\n"+logs;  // bug? fixed by 2869036143 鸣谢
-                            logs=new String(dp1.getData(),0 ,dp1.getLength())+"\n"+logs;
-                            Message m1 = new Message();
-                            m1.what=1;
-                            flushlog.sendMessage(m1);
-                        }
-                        else // play as voice
-                        {
-                            buff2 = dp1.getData();
-                            blen2 = dp1.getLength();
-                            //if buff1==buff0
-                                // do not play
-                            // buff1 --> file, then play file
-                            //FileOutputStream fo = getResources().openRawResource(R.raw.atalk000);
-                            String fn2 = new String(getApplicationContext().getExternalFilesDir("") + "/atalk002.amr");
-                            File f2 = new File(fn2);
-                            f2.delete();
-                            FileOutputStream fo = new FileOutputStream(fn2);
-                            fo.write(buff2,0, blen2);
-                            fo.close();
-
-                            Message m3 = new Message();
-                            m3.what =3;
-                            m3.arg1 =blen2; // recv len: in seconds or in bytes
-                            flushlog.sendMessage(m3);
-
-                            onClick_playvoice(view);
-                            // buff --> asset/pipe, then play asset/pipe, good
-                            // better
-                        }
+                        processReceivedPacket(dp1);
                     }
-                }catch(Exception e){
-                    System.out.println(e);
+                } catch(Exception e) {
+                    logs = "多播接收异常: " + e.toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
+                    e.printStackTrace();
                 }
             }
         }.start();
-        ((Button)findViewById(R.id.id_sendit)).setEnabled(true);
-        ((Button)findViewById(R.id.id_talk)).setEnabled(true);
+    }
+    
+    // 启动单播接收线程
+    private void startUnicastReceiver() {
+        new Thread() {
+            @Override
+            public void run()  {
+                try{
+                    unicastSocket = new DatagramSocket(Integer.parseInt(port.getText().toString()));
+                    
+                    logs = "已开启单播接收端口: " + port.getText().toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
+                    
+                    while (true) {                        byte[] msg0 = new byte[65*1024];
+                        DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
+                        unicastSocket.receive(dp1);
+                        processReceivedPacket(dp1);
+                    }
+                } catch(Exception e) {
+                    logs = "单播接收异常: " + e.toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
+                    e.printStackTrace();
+                }
+            }
+        }.start();
+    }
+      // 处理接收到的数据包
+    private void processReceivedPacket(DatagramPacket dp1) {
+        try {
+            if (dp1.getLength() < 500) {  // 文本消息
+                String message = new String(dp1.getData(), 0, dp1.getLength());
+                logs = message + "\n" + logs;
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
+            } else  // 语音消息
+            {
+                // 将接收到的语音数据保存到内存缓冲区
+                buff2 = dp1.getData();
+                blen2 = dp1.getLength();
+                
+                // 将内存中的数据复制到文件
+                String fn2 = getApplicationContext().getExternalFilesDir("") + "/atalk002.amr";
+                File f2 = new File(fn2);
+                f2.delete();
+                FileOutputStream fo = new FileOutputStream(fn2);
+                fo.write(buff2, 0, blen2);
+                fo.close();
+
+                // 发送接收消息
+                Message m3 = new Message();
+                m3.what = 3;
+                m3.arg1 = blen2;
+                flushlog.sendMessage(m3);
+
+                // 自动播放接收到的语音，使用Handler在UI线程中执行
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        onClick_playvoice(null);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    // play voice
+    // 播放语音
     public void onClick_playvoice(View view) {
         try {
+            // 显示波形动画
+            waveformView.setVisibility(View.VISIBLE);
+            waveformView.startAnimation(waveAnimation);
+            
             mplayer = new MediaPlayer();
             mplayer.setDataSource(getApplicationContext().getExternalFilesDir("") + "/atalk002.amr");
             mplayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            mplayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                @Override
+                public void onCompletion(MediaPlayer mp) {
+                    // 播放完成后停止动画
+                    waveformView.clearAnimation();
+                    waveformView.setVisibility(View.INVISIBLE);
+                }
+            });
             mplayer.prepare();
             mplayer.start();
 
             Message m4 = new Message();
-            m4.what =4;
-            m4.arg1 =(int)(mplayer.getDuration()/1000);
+            m4.what = 4;
+            m4.arg1 = (int)(mplayer.getDuration()/1000);
             flushlog.sendMessage(m4);
-        }catch(Exception e){
-            System.out.println(e);
+        } catch(Exception e) {
+            logs = "播放语音失败: " + e.toString() + "\n" + logs;
+            Message m1 = new Message();
+            m1.what = 1;
+            flushlog.sendMessage(m1);
+            e.printStackTrace();
+            
+            // 出错时也要清除动画
+            waveformView.clearAnimation();
+            waveformView.setVisibility(View.INVISIBLE);
         }
     }
 
     public void onClick_send(View view) {
-        new Thread()
-        {
+        new Thread() {
             @Override
             public void run()  {
                 try {
-                    String cs1 = nick.getText().toString()+": "+msg0.getText().toString();
+                    String cs1 = nick.getText().toString() + ": " + msg0.getText().toString();
                     byte[] bs1 = cs1.getBytes("utf-8");
-                    DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
-                            InetAddress.getByName(group.getText().toString()), // gip
-                            Integer.parseInt(port.getText().toString()));     // port
-                    ms1.send(dp1);
+                    
+                    if (isMulticastMode && ms1 != null) {
+                        // 多播模式发送
+                        DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
+                                InetAddress.getByName(group.getText().toString()),
+                                Integer.parseInt(port.getText().toString()));
+                        ms1.send(dp1);
+                        logs = "多播文本消息已发送\n" + logs;
+                    } else if (!isMulticastMode && unicastSocket != null) {
+                        // 单播模式发送
+                        DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
+                                InetAddress.getByName(peerIp.getText().toString()),
+                                Integer.parseInt(peerPort.getText().toString()));
+                        unicastSocket.send(dp1);
+                        logs = "单播文本消息已发送到 " + peerIp.getText().toString() + "\n" + logs;
+                    }
+                    
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
                 } catch (Exception e) {
+                    logs = "发送文本消息失败: " + e.toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
                     e.printStackTrace();
                 };
             }
@@ -192,96 +352,192 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onClick_talk2send(View view) {
-        new Thread()
-        {
+        new Thread() {
             @Override
             public void run()  {
                 try {
-                    DatagramPacket dp1 = new DatagramPacket(buff1, blen1,
-                            InetAddress.getByName(group.getText().toString()), // gip
-                            Integer.parseInt(port.getText().toString()));     // port
-                    ms1.send(dp1);
+                    if (isMulticastMode && ms1 != null) {
+                        // 多播模式发送语音
+                        DatagramPacket dp1 = new DatagramPacket(buff1, blen1,
+                                InetAddress.getByName(group.getText().toString()),
+                                Integer.parseInt(port.getText().toString()));
+                        ms1.send(dp1);
+                        logs = "多播语音消息已发送\n" + logs;
+                    } else if (!isMulticastMode && unicastSocket != null) {
+                        // 单播模式发送语音
+                        DatagramPacket dp1 = new DatagramPacket(buff1, blen1,
+                                InetAddress.getByName(peerIp.getText().toString()),
+                                Integer.parseInt(peerPort.getText().toString()));
+                        unicastSocket.send(dp1);
+                        logs = "单播语音消息已发送到 " + peerIp.getText().toString() + "\n" + logs;
+                    }
+                    
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
                 } catch (Exception e) {
+                    logs = "发送语音消息失败: " + e.toString() + "\n" + logs;
+                    Message m1 = new Message();
+                    m1.what = 1;
+                    flushlog.sendMessage(m1);
                     e.printStackTrace();
                 };
             }
         }.start();
     }
 
-    public void onClick_talk(View view) {
-        // https://blog.csdn.net/qq_24349189/article/details/78573477
-
-        if (isRecording ==0) {
+    private void startRecord() {
+        if (isRecording == 0) {
             try {
+                waveformView.setVisibility(View.VISIBLE);
+                waveformView.startAnimation(waveAnimation);
                 rec = new MediaRecorder();
                 rec.setOnErrorListener(new MediaRecorder.OnErrorListener() {
                     @Override
                     public void onError(MediaRecorder r, int what, int extra) {
                         Log.e("ptalk ", what + " " + extra);
-                    }});
+                    }
+                });
                 rec.setAudioSource(MediaRecorder.AudioSource.MIC);
                 rec.setAudioChannels(1);
                 rec.setAudioSamplingRate(8000);
                 rec.setOutputFormat(MediaRecorder.OutputFormat.AMR_NB);
-                //rec.setAudioEncoder(MediaRecorder.AudioEncoder.DEFAULT); // 0
-                rec.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB); // 1
-                //rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);     // 3
-                rec.setMaxDuration(6*1000);
+                rec.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+                rec.setMaxDuration(10*1000);
                 rec.setMaxFileSize(60*1024);
-                if (true) {
-                    //rec.setOutputFile("/sdcard/atalk001.rec"); // Environment.getExternalStorageDirectory()
-                    String fn1 = new String(getApplicationContext().getExternalFilesDir("") + "/atalk001.amr");
-                    File f1 = new File(fn1);
-                    f1.delete();
-                    rec.setOutputFile(fn1);
-                }
-                else // or pipe  // https://stackoverflow.com/questions/14448166/using-mediarecorder-to-write-to-a-buffer-or-fifo
-                {   // use pipe is perfered, but not ok yet
-                    ParcelFileDescriptor[] pp = ParcelFileDescriptor.createPipe();
-                    rec.setOutputFile(pp[1].getFileDescriptor());  // write to
-                    insd = new FileInputStream(pp[0].getFileDescriptor()); // then can read from [0]
-                }
+                String fn1 = getApplicationContext().getExternalFilesDir("") + "/atalk001.amr";
+                File f1 = new File(fn1);
+                f1.delete();
+                rec.setOutputFile(fn1);
                 rec.prepare();
                 rec.start();
-                isRecording =1;
-                ((Button)findViewById(R.id.id_talk)).setText("rec...");
-            }
-            catch(Exception e) {
+                isRecording = 1;
+                ((Button)findViewById(R.id.id_talk)).setText("录音中...");
+                VibratorManager vm = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
+                if (vm != null) {
+                    vm.getDefaultVibrator().vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE));
+                }
+            } catch(Exception e) {
+                logs = "开始录音失败: " + e.toString() + "\n" + logs;
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
                 e.printStackTrace();
+                waveformView.clearAnimation();
+                waveformView.setVisibility(View.INVISIBLE);
             }
         }
-        else {
-            rec.stop();
-
+    }
+    private void stopRecord() {
+        if (isRecording == 1) {
             try {
+                rec.stop();
+                rec.release();
+                rec = null;
+                waveformView.clearAnimation();
+                waveformView.setVisibility(View.INVISIBLE);
+                VibratorManager vm2 = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
+                if (vm2 != null) {
+                    long[] pattern = {0, 50, 50, 50};
+                    vm2.getDefaultVibrator().vibrate(VibrationEffect.createWaveform(pattern, -1));
+                }
+                String fn1 = getApplicationContext().getExternalFilesDir("") + "/atalk001.amr";
+                File audioFile = new File(fn1);
                 buff1 = new byte[sinmax];
-                if (true) {
-                    //blen = (new FileInputStream("/sdcard/atalk001.rec")).read(buff1);
-                    blen1 = (new FileInputStream(getApplicationContext().getExternalFilesDir("")+"/atalk001.amr")).read(buff1);
-                } else  // pipe not ok yet
-                {
-                    blen1 = insd.read(buff1);
+                FileInputStream fis = new FileInputStream(audioFile);
+                blen1 = fis.read(buff1);
+                fis.close();
+                soundBuffer.clear();
+                soundBuffer.put(buff1, 0, blen1);
+                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                isRecording = 0;
+                onClick_talk2send(null);
+                Message m2 = new Message();
+                m2.what = 2;
+                m2.arg1 = blen1;
+                flushlog.sendMessage(m2);
+            } catch (Exception e) {
+                logs = "停止录音失败: " + e.toString() + "\n" + logs;
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
+                e.printStackTrace();
+                waveformView.clearAnimation();
+                waveformView.setVisibility(View.INVISIBLE);
+            }
+        }
+    }
+
+    public void onClick_talk(View view) {
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 释放资源
+        try {
+            if (ms1 != null) {
+                ms1.close();
+                ms1 = null;
+            }
+            if (unicastSocket != null) {
+                unicastSocket.close();
+                unicastSocket = null;
+            }
+            if (mplayer != null) {
+                mplayer.release();
+                mplayer = null;
+            }
+            if (rec != null) {
+                rec.release();
+                rec = null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 暂停时停止所有正在进行的操作
+        try {
+            if (isRecording == 1 && rec != null) {
+                rec.stop();
+                rec.release();
+                rec = null;
+                isRecording = 0;
+            }
+            if (mplayer != null && mplayer.isPlaying()) {
+                mplayer.stop();
+            }
+            waveformView.clearAnimation();
+            waveformView.setVisibility(View.INVISIBLE);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    // 处理权限请求结果
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        boolean allGranted = true;
+        
+        if (requestCode == 1) {
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
                 }
             }
-            catch (IOException e) {
-                e.printStackTrace();
+            
+            if (!allGranted) {
+                logs = "警告：未授予所有必需权限，应用可能无法正常工作\n" + logs;
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
             }
-            Log.e("ptalk ", "rec len "+blen1);
-
-            ((Button)findViewById(R.id.id_talk)).setText("push 2 talk"); // restore button text
-            isRecording = 0;
-
-            onClick_talk2send(view);  // send buff over multicast
-
-            Message m2 = new Message();
-            m2.what=2;
-            m2.arg1 = blen1; // how many sent in seconds or bytes
-            //m3.arg2=rec.getMetrics()..;
-            flushlog.sendMessage(m2);
-
         }
-
-    } // end of click talk
-
-
+    }
 }

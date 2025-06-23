@@ -9,15 +9,28 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="16dp">
 
         <TextView
             android:id="@+id/id_hw"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/app_hw" />
-
-        <LinearLayout
+            android:text="@string/app_hw"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp" />
+            
+        <Switch
+            android:id="@+id/mode_switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="通信模式：多播/单播"
+            android:textSize="16sp"
+            android:checked="true"
+            android:layout_marginBottom="10dp"/>        <LinearLayout
+            android:id="@+id/multicast_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
@@ -33,12 +46,12 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Group(udp) IP"
-                    tools:text="Group(udp) IP" />
+                    android:text="组播IP地址"
+                    tools:text="组播IP地址" />
 
                 <EditText
                     android:id="@+id/id_groupip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ems="10"
                     android:inputType="textUri"
@@ -58,12 +71,12 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Port"
-                    tools:text="Port" />
+                    android:text="端口"
+                    tools:text="端口" />
 
                 <EditText
                     android:id="@+id/id_port"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:ems="10"
@@ -71,7 +84,57 @@
                     android:text="22324"
                     tools:text="22324" />
             </LinearLayout>
+        </LinearLayout>
+        
+        <LinearLayout
+            android:id="@+id/unicast_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone">
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="对方IP地址"
+                    tools:text="对方IP地址" />
+
+                <EditText
+                    android:id="@+id/id_peer_ip"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ems="10"
+                    android:inputType="textUri"
+                    android:text="192.168.1.100" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="对方端口"
+                    tools:text="对方端口" />
+
+                <EditText
+                    android:id="@+id/id_peer_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ems="10"
+                    android:inputType="number"
+                    android:text="22324" />
+            </LinearLayout>
         </LinearLayout>
 
         <Button
@@ -113,27 +176,47 @@
             android:layout_height="wrap_content"
             android:text="Send it"
             android:onClick="onClick_send"
-            tools:text="Send it" />
-
-        <Button
+            tools:text="Send it" />        <Button
             android:id="@+id/id_talk"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="onClick_talk"
-            android:text="PUSH to TALK" />
-
-        <Button
-            android:id="@+id/id_replay"
+            android:background="@android:color/holo_red_light"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:text="按住说话" />
+            
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:onClick="onClick_playvoice"
-            android:text="play last voice" />
+            android:layout_height="120dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_margin="10dp">
+            
+            <ImageView
+                android:id="@+id/waveform_view"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:visibility="invisible"/>
+                
+            <Button
+                android:id="@+id/id_replay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:onClick="onClick_playvoice"
+                android:background="@android:color/holo_blue_light"
+                android:textColor="@android:color/white"
+                android:text="播放最近语音" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/id_msgs"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="log of msgs" />
+            android:background="#f0f0f0"
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:text="消息记录" />
 
     </LinearLayout>
 
