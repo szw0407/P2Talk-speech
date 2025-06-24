@@ -29,7 +29,8 @@
             android:text="通信模式：多播/单播"
             android:textSize="16sp"
             android:checked="true"
-            android:layout_marginBottom="10dp"/>        <LinearLayout
+            android:layout_marginBottom="10dp"/>
+        <LinearLayout
             android:id="@+id/multicast_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -90,6 +91,7 @@
             android:id="@+id/unicast_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:baselineAligned="false"
             android:orientation="horizontal"
             android:visibility="gone">
 
@@ -111,7 +113,7 @@
                     android:layout_height="wrap_content"
                     android:ems="10"
                     android:inputType="textUri"
-                    android:text="192.168.1.100" />
+                    android:text="127.0.0.1" />
 
             </LinearLayout>
 
@@ -135,15 +137,24 @@
                     android:inputType="number"
                     android:text="22324" />
             </LinearLayout>
-        </LinearLayout>
-
-        <Button
+        </LinearLayout>        <Button
             android:id="@+id/id_recv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="start Receive"
             android:onClick="onClick_recv"
             tools:text="start Receive" />
+            
+        <Button
+            android:id="@+id/id_disconnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="断开连接"
+            android:onClick="onClick_disconnect"
+            android:background="@android:color/holo_red_dark"
+            android:textColor="@android:color/white"
+            android:enabled="false"
+            android:layout_marginBottom="10dp" />
 
         <TextView
             android:id="@+id/textView4"
