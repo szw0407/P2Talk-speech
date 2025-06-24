@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -21,7 +22,7 @@
             android:textStyle="bold"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="10dp" />
-            
+
         <Switch
             android:id="@+id/mode_switch"
             android:layout_width="match_parent"
@@ -29,7 +30,7 @@
             android:text="通信模式：多播/单播"
             android:textSize="16sp"
             android:checked="true"
-            android:layout_marginBottom="10dp"/>
+            android:layout_marginBottom="10dp" />
         <LinearLayout
             android:id="@+id/multicast_layout"
             android:layout_width="match_parent"
@@ -86,7 +87,7 @@
                     tools:text="22324" />
             </LinearLayout>
         </LinearLayout>
-        
+
         <LinearLayout
             android:id="@+id/unicast_layout"
             android:layout_width="match_parent"
@@ -137,14 +138,15 @@
                     android:inputType="number"
                     android:text="22324" />
             </LinearLayout>
-        </LinearLayout>        <Button
+        </LinearLayout>
+        <Button
             android:id="@+id/id_recv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="start Receive"
             android:onClick="onClick_recv"
             tools:text="start Receive" />
-            
+
         <Button
             android:id="@+id/id_disconnect"
             android:layout_width="match_parent"
@@ -187,7 +189,8 @@
             android:layout_height="wrap_content"
             android:text="Send it"
             android:onClick="onClick_send"
-            tools:text="Send it" />        <Button
+            tools:text="Send it" />
+        <Button
             android:id="@+id/id_talk"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -196,20 +199,20 @@
             android:textColor="@android:color/white"
             android:textSize="18sp"
             android:text="按住说话" />
-            
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="120dp"
             android:orientation="vertical"
             android:gravity="center"
             android:layout_margin="10dp">
-            
+
             <ImageView
                 android:id="@+id/waveform_view"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
-                android:visibility="invisible"/>
-                
+                android:visibility="invisible" />
+
             <Button
                 android:id="@+id/id_replay"
                 android:layout_width="match_parent"

@@ -35,22 +35,23 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends AppCompatActivity {
 
     TextView hint, msgs, group, port, msg0, nick, peerIp, peerPort;
-    String logs="";
-    MulticastSocket ms1=null;
+    String logs = "";
+    MulticastSocket ms1 = null;
     DatagramSocket unicastSocket = null;
     boolean isMulticastMode = true; // 默认使用多播模式
     Switch modeSwitch;
     Button disconnectBtn;
     ImageView waveformView;
-    Animation waveAnimation;    MediaRecorder rec = null;
+    Animation waveAnimation;
+    MediaRecorder rec = null;
     int isRecording = 0;
     long recordStartTime = 0; // 记录开始录制的时间
-    FileInputStream insd;  // read in sound
-    byte[] buff1;  // local sent
-    byte[] buff2;  // remote recved
-    int sinmax= 64*1024;
-    int blen1=0;
-    int blen2=0;
+    FileInputStream insd; // read in sound
+    byte[] buff1; // local sent
+    byte[] buff2; // remote recved
+    int sinmax = 64 * 1024;
+    int blen1 = 0;
+    int blen2 = 0;
     MediaPlayer mplayer = null;
     ByteBuffer soundBuffer; // 用于内存中传输音频
 
@@ -68,40 +69,40 @@ public class MainActivity extends AppCompatActivity {
         port = findViewById(R.id.id_port);
         msg0 = findViewById(R.id.id_msg1);
         nick = findViewById(R.id.id_nick);
-        
+
         // 初始化单播模式的组件
         peerIp = findViewById(R.id.id_peer_ip);
         peerPort = findViewById(R.id.id_peer_port);
-        
+
         // 初始化动画组件
         waveformView = findViewById(R.id.waveform_view);
         waveformView.setBackgroundResource(R.drawable.waveform_background);
         waveAnimation = AnimationUtils.loadAnimation(this, R.anim.wave_animation);
-          // 初始化模式切换开关
+        // 初始化模式切换开关
         modeSwitch = findViewById(R.id.mode_switch);
         disconnectBtn = findViewById(R.id.id_disconnect);
-        
+
         modeSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 isMulticastMode = isChecked;
                 findViewById(R.id.multicast_layout).setVisibility(isChecked ? View.VISIBLE : View.GONE);
                 findViewById(R.id.unicast_layout).setVisibility(isChecked ? View.GONE : View.VISIBLE);
-                
+
                 // 更新按钮状态
                 if (ms1 != null || unicastSocket != null) {
-                    ((Button)findViewById(R.id.id_sendit)).setEnabled(true);
-                    ((Button)findViewById(R.id.id_talk)).setEnabled(true);
+                    ((Button) findViewById(R.id.id_sendit)).setEnabled(true);
+                    ((Button) findViewById(R.id.id_talk)).setEnabled(true);
                 }
             }
         });
-        
+
         // 分配内存缓冲区用于音频数据
         soundBuffer = ByteBuffer.allocate(sinmax);
 
-        ((Button)findViewById(R.id.id_sendit)).setEnabled(false);
-        ((Button)findViewById(R.id.id_talk)).setEnabled(false);
-        
+        ((Button) findViewById(R.id.id_sendit)).setEnabled(false);
+        ((Button) findViewById(R.id.id_talk)).setEnabled(false);
+
         // 按住说话功能
         Button talkBtn = findViewById(R.id.id_talk);
         talkBtn.setOnTouchListener(new View.OnTouchListener() {
@@ -109,7 +110,8 @@ public class MainActivity extends AppCompatActivity {
             public boolean onTouch(View v, android.view.MotionEvent event) {
                 if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
                     startRecord();
-                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP
+                        || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
                     stopRecord();
                 }
                 return false;
@@ -120,27 +122,26 @@ public class MainActivity extends AppCompatActivity {
     // https://segmentfault.com/a/1190000005926314
     Handler flushlog = new Handler() {
         public void handleMessage(Message msg) {
-            if (msg.what==1)
+            if (msg.what == 1)
                 ;
-            else if (msg.what==2)
-                logs=msg.arg1+ " bytes voice sent\n" + logs;
-            else if (msg.what==3)
-                logs=msg.arg1+ " bytes received\n" + logs;
-            else if (msg.what==4)
-                logs=msg.arg1+ " seconds voice played\n" + logs;
+            else if (msg.what == 2)
+                logs = msg.arg1 + " bytes voice sent\n" + logs;
+            else if (msg.what == 3)
+                logs = msg.arg1 + " bytes received\n" + logs;
+            else if (msg.what == 4)
+                logs = msg.arg1 + " seconds voice played\n" + logs;
 
-            ((TextView)findViewById(R.id.id_msgs)).setText(logs);
+            ((TextView) findViewById(R.id.id_msgs)).setText(logs);
         }
     };
 
-    public void onClick_recv(View view)
-    {
+    public void onClick_recv(View view) {
         // 请求必要的权限
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this,
+                android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.RECORD_AUDIO}, 1);
-        }// 禁用设置相关的UI
+                    new String[] { android.Manifest.permission.RECORD_AUDIO }, 1);
+        } // 禁用设置相关的UI
         group.setEnabled(false);
         port.setEnabled(false);
         peerIp.setEnabled(false);
@@ -148,40 +149,41 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.id_recv).setEnabled(false);
         modeSwitch.setEnabled(false);
         disconnectBtn.setEnabled(true);
-        
+
         // 根据当前模式启动相应的接收线程
         if (isMulticastMode) {
             startMulticastReceiver();
         } else {
             startUnicastReceiver();
         }
-        
+
         // 启用发送和通话按钮
-        ((Button)findViewById(R.id.id_sendit)).setEnabled(true);
-        ((Button)findViewById(R.id.id_talk)).setEnabled(true);
+        ((Button) findViewById(R.id.id_sendit)).setEnabled(true);
+        ((Button) findViewById(R.id.id_talk)).setEnabled(true);
     }
-    
+
     // 启动多播接收线程
     private void startMulticastReceiver() {
         new Thread() {
             @Override
-            public void run()  {
-                try{
-                    ms1 = new MulticastSocket(Integer.parseInt(port.getText().toString()));  // port
-                    ms1.joinGroup(InetAddress.getByName(group.getText().toString()));  // join group ip
+            public void run() {
+                try {
+                    ms1 = new MulticastSocket(Integer.parseInt(port.getText().toString())); // port
+                    ms1.joinGroup(InetAddress.getByName(group.getText().toString())); // join group ip
                     ms1.setTimeToLive(2);
-                    
+
                     logs = "已连接到多播组: " + group.getText().toString() + ":" + port.getText().toString() + "\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
-                    
-                    while (true) {                        byte[] msg0 = new byte[65*1024];  // max 64k maybe
+
+                    while (true) {
+                        byte[] msg0 = new byte[65 * 1024]; // max 64k maybe
                         DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
                         ms1.receive(dp1);
                         processReceivedPacket(dp1);
                     }
-                } catch(Exception e) {
+                } catch (Exception e) {
                     logs = "多播接收异常: " + e.toString() + "\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
@@ -191,27 +193,27 @@ public class MainActivity extends AppCompatActivity {
             }
         }.start();
     }
-    
+
     // 启动单播接收线程
     private void startUnicastReceiver() {
         new Thread() {
             @Override
-            public void run()  {
-                try{
+            public void run() {
+                try {
                     unicastSocket = new DatagramSocket(Integer.parseInt(port.getText().toString()));
-                    
+
                     logs = "已开启单播接收端口: " + port.getText().toString() + "\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
-                    
+
                     while (true) {
-                        byte[] msg0 = new byte[65*1024];
+                        byte[] msg0 = new byte[65 * 1024];
                         DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
                         unicastSocket.receive(dp1);
                         processReceivedPacket(dp1);
                     }
-                } catch(Exception e) {
+                } catch (Exception e) {
                     logs = "单播接收异常: " + e.toString() + "\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
@@ -221,21 +223,22 @@ public class MainActivity extends AppCompatActivity {
             }
         }.start();
     }
-      // 处理接收到的数据包
+
+    // 处理接收到的数据包
     private void processReceivedPacket(DatagramPacket dp1) {
         try {
-            if (dp1.getLength() < 500) {  // 文本消息
+            if (dp1.getLength() < 500) { // 文本消息
                 String message = new String(dp1.getData(), 0, dp1.getLength());
                 logs = message + "\n" + logs;
                 Message m1 = new Message();
                 m1.what = 1;
                 flushlog.sendMessage(m1);
-            } else  // 语音消息
+            } else // 语音消息
             {
                 // 将接收到的语音数据保存到内存缓冲区
                 buff2 = dp1.getData();
                 blen2 = dp1.getLength();
-                
+
                 // 将内存中的数据复制到文件
                 String fn2 = getApplicationContext().getExternalFilesDir("") + "/atalk002.amr";
                 File f2 = new File(fn2);
@@ -269,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
             // 显示波形动画
             waveformView.setVisibility(View.VISIBLE);
             waveformView.startAnimation(waveAnimation);
-            
+
             mplayer = new MediaPlayer();
             mplayer.setDataSource(getApplicationContext().getExternalFilesDir("") + "/atalk002.amr");
             mplayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
@@ -286,15 +289,15 @@ public class MainActivity extends AppCompatActivity {
 
             Message m4 = new Message();
             m4.what = 4;
-            m4.arg1 = (int)(mplayer.getDuration()/1000);
+            m4.arg1 = (int) (mplayer.getDuration() / 1000);
             flushlog.sendMessage(m4);
-        } catch(Exception e) {
+        } catch (Exception e) {
             logs = "播放语音失败: " + e.toString() + "\n" + logs;
             Message m1 = new Message();
             m1.what = 1;
             flushlog.sendMessage(m1);
             e.printStackTrace();
-            
+
             // 出错时也要清除动画
             waveformView.clearAnimation();
             waveformView.setVisibility(View.INVISIBLE);
@@ -304,11 +307,11 @@ public class MainActivity extends AppCompatActivity {
     public void onClick_send(View view) {
         new Thread() {
             @Override
-            public void run()  {
+            public void run() {
                 try {
                     String cs1 = nick.getText().toString() + ": " + msg0.getText().toString();
                     byte[] bs1 = cs1.getBytes(StandardCharsets.UTF_8);
-                    
+
                     if (isMulticastMode && ms1 != null) {
                         // 多播模式发送
                         DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
@@ -324,7 +327,7 @@ public class MainActivity extends AppCompatActivity {
                         unicastSocket.send(dp1);
                         logs = "单播文本消息已发送到 " + peerIp.getText().toString() + "\n" + logs;
                     }
-                    
+
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
@@ -334,7 +337,8 @@ public class MainActivity extends AppCompatActivity {
                     m1.what = 1;
                     flushlog.sendMessage(m1);
                     e.printStackTrace();
-                };
+                }
+                ;
             }
         }.start();
     }
@@ -342,7 +346,7 @@ public class MainActivity extends AppCompatActivity {
     public void onClick_talk2send(View view) {
         new Thread() {
             @Override
-            public void run()  {
+            public void run() {
                 try {
                     if (isMulticastMode && ms1 != null) {
                         // 多播模式发送语音
@@ -359,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
                         unicastSocket.send(dp1);
                         logs = "单播语音消息已发送到 " + peerIp.getText().toString() + "\n" + logs;
                     }
-                    
+
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
@@ -369,7 +373,8 @@ public class MainActivity extends AppCompatActivity {
                     m1.what = 1;
                     flushlog.sendMessage(m1);
                     e.printStackTrace();
-                };
+                }
+                ;
             }
         }.start();
     }
@@ -391,26 +396,29 @@ public class MainActivity extends AppCompatActivity {
                 rec.setAudioSamplingRate(8000);
                 rec.setOutputFormat(MediaRecorder.OutputFormat.AMR_NB);
                 rec.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-                rec.setMaxDuration(10*1000);
-                rec.setMaxFileSize(60*1024);
+                rec.setMaxDuration(10 * 1000);
+                rec.setMaxFileSize(60 * 1024);
                 String fn1 = getApplicationContext().getExternalFilesDir("") + "/atalk001.amr";
                 File f1 = new File(fn1);
-                f1.delete();                rec.setOutputFile(fn1);
+                f1.delete();
+                rec.setOutputFile(fn1);
                 rec.prepare();
                 rec.start();
                 recordStartTime = System.currentTimeMillis(); // 记录开始时间
                 isRecording = 1;
-                ((Button)findViewById(R.id.id_talk)).setText("录音中...");
+                ((Button) findViewById(R.id.id_talk)).setText("录音中...");
                 VibratorManager vm = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
                 if (vm != null) {
-                    vm.getDefaultVibrator().vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE));
-                }            } catch(Exception e) {
+                    vm.getDefaultVibrator()
+                            .vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE));
+                }
+            } catch (Exception e) {
                 logs = "开始录音失败: " + e.toString() + "\n" + logs;
                 Message m1 = new Message();
                 m1.what = 1;
                 flushlog.sendMessage(m1);
                 e.printStackTrace();
-                
+
                 // 重置录音状态
                 isRecording = 0;
                 recordStartTime = 0;
@@ -422,18 +430,20 @@ public class MainActivity extends AppCompatActivity {
                     }
                     rec = null;
                 }
-                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                ((Button) findViewById(R.id.id_talk)).setText("按住说话");
                 waveformView.clearAnimation();
                 waveformView.setVisibility(View.INVISIBLE);
             }
         }
-    }    private void stopRecord() {
+    }
+
+    private void stopRecord() {
         if (isRecording == 1) {
             try {
                 // 检查录制时间是否足够长（至少500毫秒）
                 long recordDuration = System.currentTimeMillis() - recordStartTime;
                 final int MIN_RECORD_DURATION = 500; // 最小录制时间500毫秒
-                
+
                 if (recordDuration < MIN_RECORD_DURATION) {
                     // 录制时间太短，直接取消录制
                     try {
@@ -453,29 +463,30 @@ public class MainActivity extends AppCompatActivity {
                             rec.release();
                         }
                     }
-                    
+
                     rec = null;
                     isRecording = 0;
                     recordStartTime = 0;
-                    
+
                     waveformView.clearAnimation();
                     waveformView.setVisibility(View.INVISIBLE);
-                    ((Button)findViewById(R.id.id_talk)).setText("按住说话");
-                    
+                    ((Button) findViewById(R.id.id_talk)).setText("按住说话");
+
                     // 显示录制时间太短的提示
                     logs = "录制时间太短，请按住按钮至少0.5秒\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
-                    
+
                     // 轻微震动提示
                     VibratorManager vm = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
                     if (vm != null) {
-                        vm.getDefaultVibrator().vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));
+                        vm.getDefaultVibrator()
+                                .vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));
                     }
                     return;
                 }
-                
+
                 // 正常停止录制
                 rec.stop();
                 rec.release();
@@ -484,31 +495,31 @@ public class MainActivity extends AppCompatActivity {
                 waveformView.setVisibility(View.INVISIBLE);
                 VibratorManager vm2 = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
                 if (vm2 != null) {
-                    long[] pattern = {0, 50, 50, 50};
+                    long[] pattern = { 0, 50, 50, 50 };
                     vm2.getDefaultVibrator().vibrate(VibrationEffect.createWaveform(pattern, -1));
                 }
                 String fn1 = getApplicationContext().getExternalFilesDir("") + "/atalk001.amr";
                 File audioFile = new File(fn1);
-                
+
                 // 检查音频文件是否存在且有效
                 if (!audioFile.exists() || audioFile.length() < 100) {
                     logs = "录制的音频文件无效，请重试\n" + logs;
                     Message m1 = new Message();
                     m1.what = 1;
                     flushlog.sendMessage(m1);
-                    ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                    ((Button) findViewById(R.id.id_talk)).setText("按住说话");
                     isRecording = 0;
                     recordStartTime = 0;
                     return;
                 }
-                
+
                 buff1 = new byte[sinmax];
                 FileInputStream fis = new FileInputStream(audioFile);
                 blen1 = fis.read(buff1);
                 fis.close();
                 soundBuffer.clear();
                 soundBuffer.put(buff1, 0, blen1);
-                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                ((Button) findViewById(R.id.id_talk)).setText("按住说话");
                 isRecording = 0;
                 recordStartTime = 0;
                 onClick_talk2send(null);
@@ -522,7 +533,7 @@ public class MainActivity extends AppCompatActivity {
                 Message m1 = new Message();
                 m1.what = 1;
                 flushlog.sendMessage(m1);
-                
+
                 // 清理资源
                 if (rec != null) {
                     try {
@@ -534,7 +545,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 isRecording = 0;
                 recordStartTime = 0;
-                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                ((Button) findViewById(R.id.id_talk)).setText("按住说话");
                 waveformView.clearAnimation();
                 waveformView.setVisibility(View.INVISIBLE);
             } catch (Exception e) {
@@ -543,7 +554,7 @@ public class MainActivity extends AppCompatActivity {
                 m1.what = 1;
                 flushlog.sendMessage(m1);
                 e.printStackTrace();
-                
+
                 // 清理资源
                 if (rec != null) {
                     try {
@@ -555,7 +566,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 isRecording = 0;
                 recordStartTime = 0;
-                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                ((Button) findViewById(R.id.id_talk)).setText("按住说话");
                 waveformView.clearAnimation();
                 waveformView.setVisibility(View.INVISIBLE);
             }
@@ -567,7 +578,7 @@ public class MainActivity extends AppCompatActivity {
 
     // 断开连接
     public void onClick_disconnect(View view) {
-        try {            // 停止录音
+        try { // 停止录音
             if (isRecording == 1 && rec != null) {
                 try {
                     rec.stop();
@@ -584,33 +595,33 @@ public class MainActivity extends AppCompatActivity {
                 rec = null;
                 isRecording = 0;
                 recordStartTime = 0;
-                ((Button)findViewById(R.id.id_talk)).setText("按住说话");
+                ((Button) findViewById(R.id.id_talk)).setText("按住说话");
             }
-            
+
             // 停止播放
             if (mplayer != null && mplayer.isPlaying()) {
                 mplayer.stop();
                 mplayer.release();
                 mplayer = null;
             }
-            
+
             // 清除动画
             waveformView.clearAnimation();
             waveformView.setVisibility(View.INVISIBLE);
-            
+
             // 关闭Socket连接
             if (ms1 != null) {
                 ms1.close();
                 ms1 = null;
                 logs = "多播连接已断开\n" + logs;
             }
-            
+
             if (unicastSocket != null) {
                 unicastSocket.close();
                 unicastSocket = null;
                 logs = "单播连接已断开\n" + logs;
             }
-            
+
             // 重新启用设置相关的UI
             group.setEnabled(true);
             port.setEnabled(true);
@@ -619,15 +630,15 @@ public class MainActivity extends AppCompatActivity {
             findViewById(R.id.id_recv).setEnabled(true);
             modeSwitch.setEnabled(true);
             disconnectBtn.setEnabled(false);
-            
+
             // 禁用发送和通话按钮
-            ((Button)findViewById(R.id.id_sendit)).setEnabled(false);
-            ((Button)findViewById(R.id.id_talk)).setEnabled(false);
-            
+            ((Button) findViewById(R.id.id_sendit)).setEnabled(false);
+            ((Button) findViewById(R.id.id_talk)).setEnabled(false);
+
             Message m1 = new Message();
             m1.what = 1;
             flushlog.sendMessage(m1);
-            
+
         } catch (Exception e) {
             logs = "断开连接时发生错误: " + e.toString() + "\n" + logs;
             Message m1 = new Message();
@@ -661,7 +672,9 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }    @Override
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         // 暂停时停止所有正在进行的操作
@@ -692,13 +705,13 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    
+
     // 处理权限请求结果
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         boolean allGranted = true;
-        
+
         if (requestCode == 1) {
             for (int result : grantResults) {
                 if (result != PackageManager.PERMISSION_GRANTED) {
