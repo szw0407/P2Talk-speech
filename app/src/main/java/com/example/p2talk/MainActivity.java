@@ -1,5 +1,7 @@
 package com.example.p2talk;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -17,7 +19,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Switch;
-import android.widget.CompoundButton;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.ImageView;
@@ -59,6 +60,10 @@ public class MainActivity extends AppCompatActivity {
     ByteBuffer soundBuffer; // 用于内存中传输音频
     private String logs = ""; // 用于存储日志信息
 
+    // ActivityResultLauncher 替代 startActivityForResult
+    private ActivityResultLauncher<Intent> saveLauncher;
+    private ActivityResultLauncher<Intent> importLauncher;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -86,18 +91,15 @@ public class MainActivity extends AppCompatActivity {
         modeSwitch = findViewById(R.id.mode_switch);
         disconnectBtn = findViewById(R.id.id_disconnect);
 
-        modeSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                isMulticastMode = isChecked;
-                findViewById(R.id.multicast_layout).setVisibility(isChecked ? View.VISIBLE : View.GONE);
-                findViewById(R.id.unicast_layout).setVisibility(isChecked ? View.GONE : View.VISIBLE);
+        modeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            isMulticastMode = isChecked;
+            findViewById(R.id.multicast_layout).setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            findViewById(R.id.unicast_layout).setVisibility(isChecked ? View.GONE : View.VISIBLE);
 
-                // 更新按钮状态
-                if (ms1 != null || unicastSocket != null) {
-                    findViewById(R.id.id_sendit).setEnabled(true);
-                    findViewById(R.id.id_talk).setEnabled(true);
-                }
+            // 更新按钮状态
+            if (ms1 != null || unicastSocket != null) {
+                findViewById(R.id.id_sendit).setEnabled(true);
+                findViewById(R.id.id_talk).setEnabled(true);
             }
         });
 
@@ -119,6 +121,25 @@ public class MainActivity extends AppCompatActivity {
             v.performClick(); // 保证无障碍
             return false;
         });
+
+        // 注册保存 launcher
+        saveLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    saveLogsAndVoicesToZip(result.getData().getData());
+                }
+            }
+        );
+        // 注册导入 launcher
+        importLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    importLogsAndVoicesFromZip(result.getData().getData());
+                }
+            }
+        );
     }
 
     // Toast显示普通信息
@@ -130,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
             Toast toast = Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT);
             toast.show();
             activeToastCount++;
-            new Handler().postDelayed(() -> {
+            new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 toast.cancel();
                 activeToastCount = Math.max(0, activeToastCount - 1);
             }, duration);
@@ -142,16 +163,15 @@ public class MainActivity extends AppCompatActivity {
     private static class FlushLogHandler extends Handler {
         private final WeakReference<MainActivity> activityRef;
         public FlushLogHandler(MainActivity activity) {
+            super(android.os.Looper.getMainLooper());
             activityRef = new WeakReference<>(activity);
         }
         @Override
-        public void handleMessage(Message msg) {
+        public void handleMessage(@NonNull Message msg) {
             MainActivity activity = activityRef.get();
             if (activity == null) return;
             String info = null;
-            if (msg.what == 1)
-                ;
-            else if (msg.what == 2)
+            if (msg.what == 2)
                 info = msg.arg1 + " bytes voice sent";
             else if (msg.what == 3)
                 info = msg.arg1 + " bytes received";
@@ -192,76 +212,70 @@ public class MainActivity extends AppCompatActivity {
 
     // 启动多播接收线程
     private void startMulticastReceiver() {
-        new Thread() {
-            @Override
-            public void run() {
-                try {
-                    ms1 = new MulticastSocket(Integer.parseInt(port.getText().toString())); // port
-                    ms1.joinGroup(InetAddress.getByName(group.getText().toString())); // join group ip
-                    ms1.setTimeToLive(2);
-                    showInfoToast(
-                        "已连接到多播组: " + group.getText().toString() + ":" + port.getText().toString()
-                    );
-                    Message m1 = new Message();
-                    m1.what = 1;
-                    flushlog.sendMessage(m1);
+        new Thread(() -> {
+            try {
+                ms1 = new MulticastSocket(Integer.parseInt(port.getText().toString())); // port
+                ms1.joinGroup(InetAddress.getByName(group.getText().toString())); // join group ip
+                ms1.setTimeToLive(2);
+                showInfoToast(
+                    "已连接到多播组: " + group.getText().toString() + ":" + port.getText().toString()
+                );
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
 
-                    while (true) {
-                        byte[] msg0 = new byte[65 * 1024]; // max 64k maybe
-                        DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
-                        ms1.receive(dp1);
-                        processReceivedPacket(dp1);
-                    }
-                } catch (Exception e) {
-                    String msg = e.getMessage() != null ? e.getMessage() : "";
-                    if (msg.contains("closed") || msg.contains("SocketException")) {
-                        // socket closed，主动断开连接并toast
-                        runOnUiThread(() -> {
-                            showInfoToast("多播连接已断开");
-                            onClick_disconnect(null);
-                        });
-                    } else {
-                        runOnUiThread(() -> showInfoToast("多播接收异常: " + msg));
-                    }
+                while (true) {
+                    byte[] msg0 = new byte[65 * 1024]; // max 64k maybe
+                    DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
+                    ms1.receive(dp1);
+                    processReceivedPacket(dp1);
+                }
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                if (msg.contains("closed") || msg.contains("SocketException")) {
+                    // socket closed，主动断开连接并toast
+                    runOnUiThread(() -> {
+                        showInfoToast("多播连接已断开");
+                        onClick_disconnect(null);
+                    });
+                } else {
+                    runOnUiThread(() -> showInfoToast("多播接收异常: " + msg));
                 }
             }
-        }.start();
+        }).start();
     }
 
     // 启动单播接收线程
     private void startUnicastReceiver() {
-        new Thread() {
-            @Override
-            public void run() {
-                try {
-                    unicastSocket = new DatagramSocket(Integer.parseInt(port.getText().toString()));
-                    showInfoToast(
-                        "已开启单播接收端口: " + port.getText().toString() 
-                    );
-                    Message m1 = new Message();
-                    m1.what = 1;
-                    flushlog.sendMessage(m1);
+        new Thread(() -> {
+            try {
+                unicastSocket = new DatagramSocket(Integer.parseInt(port.getText().toString()));
+                showInfoToast(
+                    "已开启单播接收端口: " + port.getText().toString()
+                );
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
 
-                    while (true) {
-                        byte[] msg0 = new byte[65 * 1024];
-                        DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
-                        unicastSocket.receive(dp1);
-                        processReceivedPacket(dp1);
-                    }
-                } catch (Exception e) {
-                    String msg = e.getMessage() != null ? e.getMessage() : "";
-                    if (msg.contains("closed") || msg.contains("SocketException")) {
-                        // socket closed，主动断开连接并toast
-                        runOnUiThread(() -> {
-                            showInfoToast("单播连接已断开");
-                            onClick_disconnect(null);
-                        });
-                    } else {
-                        runOnUiThread(() -> showInfoToast("单播接收异常: " + msg));
-                    }
+                while (true) {
+                    byte[] msg0 = new byte[65 * 1024];
+                    DatagramPacket dp1 = new DatagramPacket(msg0, msg0.length);
+                    unicastSocket.receive(dp1);
+                    processReceivedPacket(dp1);
+                }
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                if (msg.contains("closed") || msg.contains("SocketException")) {
+                    // socket closed，主动断开连接并toast
+                    runOnUiThread(() -> {
+                        showInfoToast("单播连接已断开");
+                        onClick_disconnect(null);
+                    });
+                } else {
+                    runOnUiThread(() -> showInfoToast("单播接收异常: " + msg));
                 }
             }
-        }.start();
+        }).start();
     }
 
     // 处理接收到的数据包
@@ -307,7 +321,6 @@ public class MainActivity extends AppCompatActivity {
                 String safeSender = sender.replaceAll("[^a-zA-Z0-9_\\-]", "_");
                 String filename = safeSender + "_" + ip + "_" + port + "_" + ts + ".amr";
                 String fn2 = getApplicationContext().getExternalFilesDir("") + "/" + filename;
-                File f2 = new File(fn2);
                 FileOutputStream fo = new FileOutputStream(fn2);
                 fo.write(buff2, 0, blen2);
                 fo.close();
@@ -322,7 +335,7 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception ignore) {}
                 double sizeKB = blen2 / 1024.0;
                 // 日志内容格式：zhang: [some.amr(sound, 2.05s, 3.20KB)]
-                String infoMsg = sender + ": [" + filename + "(sound, " + String.format("%.2f", durationSec) + "s, " + String.format("%.2f", sizeKB) + "KB)]";
+                String infoMsg = sender + ": [" + filename + "(sound, " + String.format(java.util.Locale.getDefault(), "%.2f", durationSec) + "s, " + String.format(java.util.Locale.getDefault(), "%.2f", sizeKB) + "KB)]";
                 logs = infoMsg + "\n" + logs;
 
                 Message m3 = new Message();
@@ -357,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
             mplayer.start();
             Message m4 = new Message();
             m4.what = 4;
-            m4.arg1 = (int) (mplayer.getDuration() / 1000);
+            m4.arg1 = (mplayer.getDuration() / 1000);
             flushlog.sendMessage(m4);
         } catch (Exception e) {
             Message m1 = new Message();
@@ -370,75 +383,68 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onClick_send(View view) {
-        new Thread() {
-            @Override
-            public void run() {
-                try {
-                    String cs1 = nick.getText().toString() + ": " + msg0.getText().toString();
-                    byte[] bs1 = cs1.getBytes(StandardCharsets.UTF_8);
+        new Thread(() -> {
+            try {
+                String cs1 = nick.getText().toString() + ": " + msg0.getText().toString();
+                byte[] bs1 = cs1.getBytes(StandardCharsets.UTF_8);
 
-                    if (isMulticastMode && ms1 != null) {
-                        // 多播模式发送
-                        DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
-                                InetAddress.getByName(group.getText().toString()),
-                                Integer.parseInt(port.getText().toString()));
-                        ms1.send(dp1);
-                        showInfoToast("多播文本消息已发送");
-                    } else if (!isMulticastMode && unicastSocket != null) {
-                        // 单播模式发送
-                        DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
-                                InetAddress.getByName(peerIp.getText().toString()),
-                                Integer.parseInt(peerPort.getText().toString()));
-                        unicastSocket.send(dp1);
-                        showInfoToast("单播文本消息已发送");
-                    }
-
-                    Message m1 = new Message();
-                    m1.what = 1;
-                    flushlog.sendMessage(m1);
-                } catch (Exception e) {
-                    showErrorDialog("发送文本消息失败:\n" + e.getMessage());
+                if (isMulticastMode && ms1 != null) {
+                    // 多播模式发送
+                    DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
+                            InetAddress.getByName(group.getText().toString()),
+                            Integer.parseInt(port.getText().toString()));
+                    ms1.send(dp1);
+                    showInfoToast("多播文本消息已发送");
+                } else if (!isMulticastMode && unicastSocket != null) {
+                    // 单播模式发送
+                    DatagramPacket dp1 = new DatagramPacket(bs1, bs1.length,
+                            InetAddress.getByName(peerIp.getText().toString()),
+                            Integer.parseInt(peerPort.getText().toString()));
+                    unicastSocket.send(dp1);
+                    showInfoToast("单播文本消息已发送");
                 }
-                ;
+
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
+            } catch (Exception e) {
+                showErrorDialog("发送文本消息失败:\n" + e.getMessage());
             }
-        }.start();
+        }).start();
     }
 
     public void onClick_talk2send(View view) {
-        new Thread() {
-            @Override
-            public void run() {
-                try {
-                    // 1. 语音包格式：昵称: + "\0" + 语音数据
-                    String sender = nick.getText().toString();
-                    byte[] nameBytes = (sender + ":\0").getBytes(StandardCharsets.UTF_8);
-                    byte[] sendBytes = new byte[nameBytes.length + blen1];
-                    System.arraycopy(nameBytes, 0, sendBytes, 0, nameBytes.length);
-                    System.arraycopy(buff1, 0, sendBytes, nameBytes.length, blen1);
+        new Thread(() -> {
+            try {
+                // 1. 语音包格式：昵称: + "\0" + 语音数据
+                String sender = nick.getText().toString();
+                byte[] nameBytes = (sender + ":\0").getBytes(StandardCharsets.UTF_8);
+                byte[] sendBytes = new byte[nameBytes.length + blen1];
+                System.arraycopy(nameBytes, 0, sendBytes, 0, nameBytes.length);
+                System.arraycopy(buff1, 0, sendBytes, nameBytes.length, blen1);
 
-                    if (isMulticastMode && ms1 != null) {
-                        DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
-                                InetAddress.getByName(group.getText().toString()),
-                                Integer.parseInt(port.getText().toString()));
-                        ms1.send(dp1);
-                    } else if (!isMulticastMode && unicastSocket != null) {
-                        DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
-                                InetAddress.getByName(peerIp.getText().toString()),
-                                Integer.parseInt(peerPort.getText().toString()));
-                        unicastSocket.send(dp1);
-                    }
-
-                    Message m1 = new Message();
-                    m1.what = 1;
-                    flushlog.sendMessage(m1);
-                } catch (Exception e) {
-                    Message m1 = new Message();
-                    m1.what = 1;
-                    flushlog.sendMessage(m1);
-                    showErrorDialog("发送语音消息失败:\n" + e.getMessage());
+                if (isMulticastMode && ms1 != null) {
+                    DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
+                            InetAddress.getByName(group.getText().toString()),
+                            Integer.parseInt(port.getText().toString()));
+                    ms1.send(dp1);
+                } else if (!isMulticastMode && unicastSocket != null) {
+                    DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
+                            InetAddress.getByName(peerIp.getText().toString()),
+                            Integer.parseInt(peerPort.getText().toString()));
+                    unicastSocket.send(dp1);
                 }
+
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
+            } catch (Exception e) {
+                Message m1 = new Message();
+                m1.what = 1;
+                flushlog.sendMessage(m1);
+                showErrorDialog("发送语音消息失败:\n" + e.getMessage());
             }
-        }.start();
+        }).start();
     }
 
     private void startRecord() {
@@ -446,8 +452,8 @@ public class MainActivity extends AppCompatActivity {
             try {
                 waveformView.setVisibility(View.VISIBLE);
                 waveformView.startAnimation(waveAnimation);
-                // MediaRecorder(Context) 仅API 31+，为兼容性保留无参构造
-                rec = new MediaRecorder();
+                // 兼容API 31+ MediaRecorder(Context)
+                rec = new MediaRecorder(this);
                 rec.setOnErrorListener((r, what, extra) -> Log.e("ptalk ", what + " " + extra));
                 rec.setAudioSource(MediaRecorder.AudioSource.MIC);
                 rec.setAudioChannels(1);
@@ -458,7 +464,8 @@ public class MainActivity extends AppCompatActivity {
                 rec.setMaxFileSize(60 * 1024);
                 String fn1 = getApplicationContext().getExternalFilesDir("") + "/atalk001.amr";
                 File f1 = new File(fn1);
-                if (!f1.delete() && f1.exists()) {
+                // 删除旧文件并检查结果
+                if (f1.exists() && !f1.delete()) {
                     Log.w("MainActivity", "文件删除失败: " + fn1);
                 }
                 rec.setOutputFile(fn1);
@@ -641,21 +648,17 @@ public class MainActivity extends AppCompatActivity {
     public void onClick_disconnect(View view) {
         // 如果有消息记录，先询问是否保存
         if (logs != null && !logs.trim().isEmpty()) {
-            runOnUiThread(() -> {
-                new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("断开连接")
-                    .setMessage("是否要保存当前消息和语音？")
-                    .setPositiveButton("保存并断开", (dialog, which) -> {
-                        onClick_save(null);
-                        // 提示用户保存后请再次点击断开
-                        showInfoToast("请保存完成后再次点击断开");
-                    })
-                    .setNegativeButton("直接断开", (dialog, which) -> {
-                        doDisconnect();
-                    })
-                    .setNeutralButton("取消", null)
-                    .show();
-            });
+            runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+                .setTitle("断开连接")
+                .setMessage("是否要保存当前消息和语音？")
+                .setPositiveButton("保存并断开", (dialog, which) -> {
+                    onClick_save(null);
+                    // 提示用户保存后请再次点击断开
+                    showInfoToast("请保存完成后再次点击断开");
+                })
+                .setNegativeButton("直接断开", (dialog, which) -> doDisconnect())
+                .setNeutralButton("取消", null)
+                .show());
             return;
         }
         doDisconnect();
@@ -717,7 +720,9 @@ public class MainActivity extends AppCompatActivity {
                 if (files != null) {
                     for (File f : files) {
                         if (f.getName().endsWith(".amr")) {
-                            try { f.delete(); } catch (Exception ignore) {}
+                            try {
+                               assert  f.delete();
+                            } catch (Exception ignore) {}
                         }
                     }
                 }
@@ -804,13 +809,11 @@ public class MainActivity extends AppCompatActivity {
 
     // 弹窗显示错误信息
     private void showErrorDialog(final String message) {
-        runOnUiThread(() -> {
-            new AlertDialog.Builder(MainActivity.this)
-                .setTitle("错误")
-                .setMessage(message)
-                .setPositiveButton("确定", null)
-                .show();
-        });
+        runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+            .setTitle("错误")
+            .setMessage(message)
+            .setPositiveButton("确定", null)
+            .show());
     }
 
     // 处理权限请求结果
@@ -862,11 +865,11 @@ public class MainActivity extends AppCompatActivity {
                     if (filename != null) {
                         android.text.style.ClickableSpan span = new android.text.style.ClickableSpan() {
                             @Override
-                            public void onClick(View widget) {
+                            public void onClick(@NonNull View widget) {
                                 playVoiceFile(filename);
                             }
                             @Override
-                            public void updateDrawState(android.text.TextPaint ds) {
+                            public void updateDrawState(@NonNull android.text.TextPaint ds) {
                                 super.updateDrawState(ds);
                                 ds.setUnderlineText(true); // 下划线
                                 ds.setColor(ds.linkColor); // 使用链接色
@@ -890,31 +893,18 @@ public class MainActivity extends AppCompatActivity {
 
     // 保存消息记录和声音文件
     public void onClick_save(View view) {
-        // 1. 选择保存位置
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.setType("application/zip");
         intent.putExtra(Intent.EXTRA_TITLE, "p2talk_backup.zip");
-        startActivityForResult(intent, 1001);
+        saveLauncher.launch(intent);
     }
 
     // 导入消息记录和声音文件
     public void onClick_import(View view) {
-        // 1. 选择zip文件
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.setType("application/zip");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(intent, 1002);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != RESULT_OK || data == null) return;
-        if (requestCode == 1001) { // 保存
-            saveLogsAndVoicesToZip(data.getData());
-        } else if (requestCode == 1002) { // 导入
-            importLogsAndVoicesFromZip(data.getData());
-        }
+        importLauncher.launch(intent);
     }
 
     // 保存到zip
