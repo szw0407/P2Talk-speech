@@ -294,8 +294,13 @@ public class MainActivity extends AppCompatActivity {
                 System.arraycopy(data, audioOffset, buff2, 0, len - audioOffset);
                 blen2 = len - audioOffset;
 
-                // 生成唯一文件名
-                String ip = dp1.getAddress() != null ? dp1.getAddress().getHostAddress() : "unknownip";
+                // 生成唯一文件名，IP取界面输入
+                String ip;
+                if (isMulticastMode) {
+                    ip = group.getText().toString();
+                } else {
+                    ip = peerIp.getText().toString();
+                }
                 int port = dp1.getPort();
                 long ts = System.currentTimeMillis();
                 String safeSender = sender.replaceAll("[^a-zA-Z0-9_\\-]", "_");
@@ -306,17 +311,17 @@ public class MainActivity extends AppCompatActivity {
                 fo.write(buff2, 0, blen2);
                 fo.close();
 
-                int durationSec = 0;
+                double durationSec = 0;
                 try {
                     MediaPlayer tmpPlayer = new MediaPlayer();
                     tmpPlayer.setDataSource(fn2);
                     tmpPlayer.prepare();
-                    durationSec = tmpPlayer.getDuration() / 1000;
+                    durationSec = tmpPlayer.getDuration() / 1000.0;
                     tmpPlayer.release();
                 } catch (Exception ignore) {}
-                int sizeKB = (blen2 + 1023) / 1024;
-                // 日志内容里带上文件名
-                String infoMsg = sender + ": (sound, " + durationSec + "s, " + sizeKB + "KB) [file=" + filename + "]";
+                double sizeKB = blen2 / 1024.0;
+                // 日志内容格式：zhang: [some.amr(sound, 2.05s, 3.20KB)]
+                String infoMsg = sender + ": [" + filename + "(sound, " + String.format("%.2f", durationSec) + "s, " + String.format("%.2f", sizeKB) + "KB)]";
                 logs = infoMsg + "\n" + logs;
 
                 Message m3 = new Message();
@@ -798,22 +803,38 @@ public class MainActivity extends AppCompatActivity {
             String[] lines = logs.split("\\n");
             android.text.SpannableStringBuilder builder = new android.text.SpannableStringBuilder();
             for (String line : lines) {
-                // 检查是否为语音消息并带有[file=xxx]
-                if (line.contains(": (sound,") && line.contains("[file=")) {
-                    int fileStart = line.indexOf("[file=") + 6;
-                    int fileEnd = line.indexOf("]", fileStart);
-                    String filename = (fileStart > 5 && fileEnd > fileStart) ? line.substring(fileStart, fileEnd) : null;
-                    int start = builder.length();
-                    builder.append(line);
-                    int end = builder.length();
+                // 检查是否为语音消息格式：用户名: [文件名(sound, xx秒, xxKB)]
+                int leftBracket = line.indexOf(": [");
+                int rightBracket = line.indexOf("]", leftBracket);
+                if (leftBracket > 0 && rightBracket > leftBracket) {
+                    // 用户名部分
+                    builder.append(line.substring(0, leftBracket + 3));
+                    // 可点击部分
+                    int clickableStart = builder.length();
+                    String clickableText = line.substring(leftBracket + 3, rightBracket);
+                    builder.append(clickableText);
+                    int clickableEnd = builder.length();
+                    // 提取文件名（到第一个(为止）
+                    int parenIdx = clickableText.indexOf("(");
+                    String filename = parenIdx > 0 ? clickableText.substring(0, parenIdx) : null;
                     if (filename != null) {
                         android.text.style.ClickableSpan span = new android.text.style.ClickableSpan() {
                             @Override
                             public void onClick(View widget) {
                                 playVoiceFile(filename);
                             }
+                            @Override
+                            public void updateDrawState(android.text.TextPaint ds) {
+                                super.updateDrawState(ds);
+                                ds.setUnderlineText(true); // 下划线
+                                ds.setColor(ds.linkColor); // 使用链接色
+                            }
                         };
-                        builder.setSpan(span, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        builder.setSpan(span, clickableStart, clickableEnd, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    builder.append("]");
+                    if (rightBracket + 1 < line.length()) {
+                        builder.append(line.substring(rightBracket + 1));
                     }
                     builder.append("\n");
                 } else {
