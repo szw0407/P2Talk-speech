@@ -121,12 +121,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // Toast显示普通信息
+    private static int activeToastCount = 0;
     private void showInfoToast(final String message) {
         runOnUiThread(() -> {
+            int baseDuration = 600; // 单条toast 600ms
+            int duration = baseDuration + activeToastCount * 600 + 200; // 每多一条多400ms
             Toast toast = Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT);
             toast.show();
-            // 手动缩短显示时间
-            new Handler().postDelayed(toast::cancel, 600); // 600ms后消失
+            activeToastCount++;
+            new Handler().postDelayed(() -> {
+                toast.cancel();
+                activeToastCount = Math.max(0, activeToastCount - 1);
+            }, duration);
         });
     }
 
@@ -281,6 +287,28 @@ public class MainActivity extends AppCompatActivity {
                 FileOutputStream fo = new FileOutputStream(fn2);
                 fo.write(buff2, 0, blen2);
                 fo.close();
+
+                // 获取语音时长和发送者昵称
+                String sender = "语音";
+                try {
+                    // 尝试从上一条文本消息中提取昵称
+                    String[] lines = logs.split("\\n");
+                    if (lines.length > 0 && lines[0].contains(": ")) {
+                        sender = lines[0].split(": ", 2)[0];
+                    }
+                } catch (Exception ignore) {}
+                int durationSec = 0;
+                try {
+                    MediaPlayer tmpPlayer = new MediaPlayer();
+                    tmpPlayer.setDataSource(fn2);
+                    tmpPlayer.prepare();
+                    durationSec = tmpPlayer.getDuration() / 1000;
+                    tmpPlayer.release();
+                } catch (Exception ignore) {}
+                double sizeKB = blen2 / 1024.0;
+                String sizeStr = String.format("%.2f", sizeKB);
+                String infoMsg = sender + ": (sound, " + durationSec + "s, " + sizeStr + "KB)";
+                logs = infoMsg + "\n" + logs;
 
                 // 发送接收消息
                 Message m3 = new Message();
