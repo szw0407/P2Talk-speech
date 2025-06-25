@@ -4,8 +4,9 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.os.Bundle;
@@ -861,5 +862,113 @@ public class MainActivity extends AppCompatActivity {
             logView.setText(builder);
             logView.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
         });
+    }
+
+    // 保存消息记录和声音文件
+    public void onClick_save(View view) {
+        // 1. 选择保存位置
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.setType("application/zip");
+        intent.putExtra(Intent.EXTRA_TITLE, "p2talk_backup.zip");
+        startActivityForResult(intent, 1001);
+    }
+
+    // 导入消息记录和声音文件
+    public void onClick_import(View view) {
+        // 1. 选择zip文件
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("application/zip");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(intent, 1002);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null) return;
+        if (requestCode == 1001) { // 保存
+            saveLogsAndVoicesToZip(data.getData());
+        } else if (requestCode == 1002) { // 导入
+            importLogsAndVoicesFromZip(data.getData());
+        }
+    }
+
+    // 保存到zip
+    private void saveLogsAndVoicesToZip(android.net.Uri uri) {
+        new Thread(() -> {
+            try {
+                java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(getContentResolver().openOutputStream(uri));
+                // 1. 保存logs.txt
+                zos.putNextEntry(new java.util.zip.ZipEntry("logs.txt"));
+                zos.write(logs.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zos.closeEntry();
+                // 2. 保存所有amr文件
+                File dir = getApplicationContext().getExternalFilesDir("");
+                if (dir != null && dir.isDirectory()) {
+                    File[] files = dir.listFiles();
+                    if (files != null) {
+                        for (File f : files) {
+                            if (f.getName().endsWith(".amr")) {
+                                zos.putNextEntry(new java.util.zip.ZipEntry(f.getName()));
+                                java.io.FileInputStream fis = new java.io.FileInputStream(f);
+                                byte[] buf = new byte[4096];
+                                int len;
+                                while ((len = fis.read(buf)) > 0) {
+                                    zos.write(buf, 0, len);
+                                }
+                                fis.close();
+                                zos.closeEntry();
+                            }
+                        }
+                    }
+                }
+                zos.close();
+                runOnUiThread(() -> showInfoToast("消息和语音已保存"));
+            } catch (Exception e) {
+                runOnUiThread(() -> showErrorDialog("保存失败: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    // 从zip导入
+    private void importLogsAndVoicesFromZip(android.net.Uri uri) {
+        new Thread(() -> {
+            try {
+                java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(getContentResolver().openInputStream(uri));
+                java.util.zip.ZipEntry entry;
+                StringBuilder logsBuilder = new StringBuilder();
+                File dir = getApplicationContext().getExternalFilesDir("");
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (entry.getName().equals("logs.txt")) {
+                        // 读取日志
+                        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                        byte[] buf = new byte[4096];
+                        int len;
+                        while ((len = zis.read(buf)) > 0) baos.write(buf, 0, len);
+                        logsBuilder.append(baos.toString("UTF-8"));
+                        baos.close();
+                    } else if (entry.getName().endsWith(".amr")) {
+                        // 写入amr文件
+                        if (dir != null) {
+                            File outFile = new File(dir, entry.getName());
+                            java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
+                            byte[] buf = new byte[4096];
+                            int len;
+                            while ((len = zis.read(buf)) > 0) fos.write(buf, 0, len);
+                            fos.close();
+                        }
+                    }
+                    zis.closeEntry();
+                }
+                zis.close();
+                logs = logsBuilder.toString();
+                runOnUiThread(() -> {
+                    updateLogView();
+                    showInfoToast("消息和语音已导入");
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> showErrorDialog("导入失败: " + e.getMessage()));
+            }
+        }).start();
     }
 }

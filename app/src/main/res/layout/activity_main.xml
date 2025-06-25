@@ -152,10 +152,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="10dp"
-            android:background="@android:color/holo_red_dark"
             android:enabled="false"
             android:onClick="onClick_disconnect"
-            android:text="断开连接"
+            android:text="Disconnect"
             android:textColor="@android:color/white" />
 <LinearLayout
     android:layout_width="match_parent"
@@ -205,14 +204,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="onClick_talk"
-            android:background="@android:color/holo_red_light"
-            android:textColor="@android:color/white"
-            android:textSize="18sp"
-            android:text="按住说话" />
+            android:textSize="16sp"
+            android:text="Press to speak" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="67dp"
+            android:layout_height="65dp"
             android:layout_margin="10dp"
             android:gravity="center"
             android:orientation="vertical">
@@ -223,7 +220,27 @@
                 android:layout_height="60dp"
                 android:visibility="invisible" />
         </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
+            <Button
+                android:layout_margin="5dp"
+                android:id="@+id/id_clear"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Save"
+                android:onClick="onClick_save" />
+            <Button
+                android:layout_margin="5dp"
+                android:id="@+id/id_clear_msgs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Import"
+                android:onClick="onClick_import" />
+        </LinearLayout>
         <TextView
             android:id="@+id/id_msgs"
             android:layout_width="match_parent"
