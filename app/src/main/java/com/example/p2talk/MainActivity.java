@@ -639,6 +639,30 @@ public class MainActivity extends AppCompatActivity {
 
     // 断开连接
     public void onClick_disconnect(View view) {
+        // 如果有消息记录，先询问是否保存
+        if (logs != null && !logs.trim().isEmpty()) {
+            runOnUiThread(() -> {
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("断开连接")
+                    .setMessage("是否要保存当前消息和语音？")
+                    .setPositiveButton("保存并断开", (dialog, which) -> {
+                        onClick_save(null);
+                        // 提示用户保存后请再次点击断开
+                        showInfoToast("请保存完成后再次点击断开");
+                    })
+                    .setNegativeButton("直接断开", (dialog, which) -> {
+                        doDisconnect();
+                    })
+                    .setNeutralButton("取消", null)
+                    .show();
+            });
+            return;
+        }
+        doDisconnect();
+    }
+
+    // 真正执行断开和清理
+    private void doDisconnect() {
         try { // 停止录音
             if (isRecording == 1 && rec != null) {
                 try {
