@@ -681,6 +681,23 @@ public class MainActivity extends AppCompatActivity {
                 showInfoToast("单播连接已断开");
             }
 
+            // 清空消息记录
+            logs = "";
+            updateLogView();
+
+            // 删除所有.amr文件
+            File dir = getApplicationContext().getExternalFilesDir("");
+            if (dir != null && dir.isDirectory()) {
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        if (f.getName().endsWith(".amr")) {
+                            try { f.delete(); } catch (Exception ignore) {}
+                        }
+                    }
+                }
+            }
+
             // 重新启用设置相关的UI
             group.setEnabled(true);
             port.setEnabled(true);
