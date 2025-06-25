@@ -151,45 +151,55 @@
             android:id="@+id/id_disconnect"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="断开连接"
-            android:onClick="onClick_disconnect"
+            android:layout_marginBottom="10dp"
             android:background="@android:color/holo_red_dark"
-            android:textColor="@android:color/white"
             android:enabled="false"
-            android:layout_marginBottom="10dp" />
+            android:onClick="onClick_disconnect"
+            android:text="断开连接"
+            android:textColor="@android:color/white" />
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="60dp">
 
+
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
         <TextView
             android:id="@+id/textView4"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="my nick name:"
-            tools:text="my nick name:" />
-
-        <EditText
+            android:layout_height="18dp"
+            android:text="name:"
+            tools:text="name:" />
+    <EditText
             android:id="@+id/id_nick"
-            android:layout_width="wrap_content"
+            android:layout_width="90dp"
             android:layout_height="wrap_content"
             android:ems="10"
             android:inputType="textPersonName"
             android:text="zhang3"
             tools:text="zhang3" />
-
+</LinearLayout>
         <EditText
             android:id="@+id/id_msg1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_width="200dp"
+            android:layout_height="60dp"
             android:ems="10"
             android:inputType="textPersonName"
             android:text="hello"
             tools:text="hello" />
 
-        <Button
-            android:id="@+id/id_sendit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Send it"
-            android:onClick="onClick_send"
-            tools:text="Send it" />
+    <Button
+        android:id="@+id/id_sendit"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:onClick="onClick_send"
+        android:text="Send"
+        tools:text="Send" />
+</LinearLayout>
+
         <Button
             android:id="@+id/id_talk"
             android:layout_width="match_parent"
@@ -202,35 +212,26 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="120dp"
-            android:orientation="vertical"
+            android:layout_height="67dp"
+            android:layout_margin="10dp"
             android:gravity="center"
-            android:layout_margin="10dp">
+            android:orientation="vertical">
 
             <ImageView
                 android:id="@+id/waveform_view"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
                 android:visibility="invisible" />
-
-            <Button
-                android:id="@+id/id_replay"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:onClick="onClick_playvoice"
-                android:background="@android:color/holo_blue_light"
-                android:textColor="@android:color/white"
-                android:text="播放最近语音" />
         </LinearLayout>
 
         <TextView
             android:id="@+id/id_msgs"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:background="#f0f0f0"
             android:padding="8dp"
-            android:textSize="14sp"
-            android:text="消息记录" />
+            android:text="消息记录"
+            android:textSize="14sp" />
 
     </LinearLayout>
 
