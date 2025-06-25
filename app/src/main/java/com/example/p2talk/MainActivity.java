@@ -156,7 +156,7 @@ public class MainActivity extends AppCompatActivity {
                 info = msg.arg1 + " bytes received";
             else if (msg.what == 4)
                 info = msg.arg1 + " seconds voice played";
-            ((TextView) activity.findViewById(R.id.id_msgs)).setText(activity.logs);
+            activity.updateLogView();
             if (info != null) activity.showInfoToast(info);
         }
     }
@@ -274,29 +274,38 @@ public class MainActivity extends AppCompatActivity {
                 flushlog.sendMessage(m1);
             } else // 语音消息
             {
-                // 将接收到的语音数据保存到内存缓冲区
-                buff2 = dp1.getData();
-                blen2 = dp1.getLength();
-
-                // 将内存中的数据复制到文件
-                String fn2 = getApplicationContext().getExternalFilesDir("") + "/atalk002.amr";
-                File f2 = new File(fn2);
-                if (!f2.delete() && f2.exists()) {
-                    Log.w("MainActivity", "文件删除失败: " + fn2);
+                byte[] data = dp1.getData();
+                int len = dp1.getLength();
+                // 解析昵称: 以“:\0”为分隔
+                int nameEnd = -1;
+                for (int i = 0; i < len - 1; i++) {
+                    if (data[i] == ':' && data[i+1] == 0) {
+                        nameEnd = i;
+                        break;
+                    }
                 }
+                String sender = "未知";
+                int audioOffset = 0;
+                if (nameEnd > 0) {
+                    sender = new String(data, 0, nameEnd, StandardCharsets.UTF_8);
+                    audioOffset = nameEnd + 2;
+                }
+                buff2 = new byte[len - audioOffset];
+                System.arraycopy(data, audioOffset, buff2, 0, len - audioOffset);
+                blen2 = len - audioOffset;
+
+                // 生成唯一文件名
+                String ip = dp1.getAddress() != null ? dp1.getAddress().getHostAddress() : "unknownip";
+                int port = dp1.getPort();
+                long ts = System.currentTimeMillis();
+                String safeSender = sender.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+                String filename = safeSender + "_" + ip + "_" + port + "_" + ts + ".amr";
+                String fn2 = getApplicationContext().getExternalFilesDir("") + "/" + filename;
+                File f2 = new File(fn2);
                 FileOutputStream fo = new FileOutputStream(fn2);
                 fo.write(buff2, 0, blen2);
                 fo.close();
 
-                // 获取语音时长和发送者昵称
-                String sender = "语音";
-                try {
-                    // 尝试从上一条文本消息中提取昵称
-                    String[] lines = logs.split("\\n");
-                    if (lines.length > 0 && lines[0].contains(": ")) {
-                        sender = lines[0].split(": ", 2)[0];
-                    }
-                } catch (Exception ignore) {}
                 int durationSec = 0;
                 try {
                     MediaPlayer tmpPlayer = new MediaPlayer();
@@ -305,34 +314,29 @@ public class MainActivity extends AppCompatActivity {
                     durationSec = tmpPlayer.getDuration() / 1000;
                     tmpPlayer.release();
                 } catch (Exception ignore) {}
-                double sizeKB = blen2 / 1024.0;
-                String sizeStr = String.format("%.2f", sizeKB);
-                String infoMsg = sender + ": (sound, " + durationSec + "s, " + sizeStr + "KB)";
+                int sizeKB = (blen2 + 1023) / 1024;
+                // 日志内容里带上文件名
+                String infoMsg = sender + ": (sound, " + durationSec + "s, " + sizeKB + "KB) [file=" + filename + "]";
                 logs = infoMsg + "\n" + logs;
 
-                // 发送接收消息
                 Message m3 = new Message();
                 m3.what = 3;
                 m3.arg1 = blen2;
                 flushlog.sendMessage(m3);
-
-                // 自动播放接收到的语音，使用Handler在UI线程中执行
-                runOnUiThread(() -> onClick_playvoice(null));
             }
         } catch (Exception e) {
             showErrorDialog("处理接收包异常:\n" + e.getMessage());
         }
     }
 
-    // 播放语音
-    public void onClick_playvoice(View view) {
+    // 播放指定文件的语音
+    public void playVoiceFile(String filename) {
         try {
-            // 显示波形动画
             waveformView.setVisibility(View.VISIBLE);
             waveformView.startAnimation(waveAnimation);
-
             mplayer = new MediaPlayer();
-            mplayer.setDataSource(getApplicationContext().getExternalFilesDir("") + "/atalk002.amr");
+            String fn = getApplicationContext().getExternalFilesDir("") + "/" + filename;
+            mplayer.setDataSource(fn);
             mplayer.setAudioAttributes(
                 new android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
@@ -340,13 +344,11 @@ public class MainActivity extends AppCompatActivity {
                     .build()
             );
             mplayer.setOnCompletionListener(mp -> {
-                // 播放完成后停止动画
                 waveformView.clearAnimation();
                 waveformView.setVisibility(View.INVISIBLE);
             });
             mplayer.prepare();
             mplayer.start();
-
             Message m4 = new Message();
             m4.what = 4;
             m4.arg1 = (int) (mplayer.getDuration() / 1000);
@@ -356,7 +358,6 @@ public class MainActivity extends AppCompatActivity {
             m1.what = 1;
             flushlog.sendMessage(m1);
             showErrorDialog("播放语音失败:\n" + e.getMessage());
-            // 出错时也要清除动画
             waveformView.clearAnimation();
             waveformView.setVisibility(View.INVISIBLE);
         }
@@ -402,20 +403,23 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
+                    // 1. 语音包格式：昵称: + "\0" + 语音数据
+                    String sender = nick.getText().toString();
+                    byte[] nameBytes = (sender + ":\0").getBytes(StandardCharsets.UTF_8);
+                    byte[] sendBytes = new byte[nameBytes.length + blen1];
+                    System.arraycopy(nameBytes, 0, sendBytes, 0, nameBytes.length);
+                    System.arraycopy(buff1, 0, sendBytes, nameBytes.length, blen1);
+
                     if (isMulticastMode && ms1 != null) {
-                        // 多播模式发送语音
-                        DatagramPacket dp1 = new DatagramPacket(buff1, blen1,
+                        DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
                                 InetAddress.getByName(group.getText().toString()),
                                 Integer.parseInt(port.getText().toString()));
                         ms1.send(dp1);
-//                        showInfoToast("多播语音消息已发送");
                     } else if (!isMulticastMode && unicastSocket != null) {
-                        // 单播模式发送语音
-                        DatagramPacket dp1 = new DatagramPacket(buff1, blen1,
+                        DatagramPacket dp1 = new DatagramPacket(sendBytes, sendBytes.length,
                                 InetAddress.getByName(peerIp.getText().toString()),
                                 Integer.parseInt(peerPort.getText().toString()));
                         unicastSocket.send(dp1);
-//                        showInfoToast("单播语音消息已发送到 " + peerIp.getText().toString());
                     }
 
                     Message m1 = new Message();
@@ -427,7 +431,6 @@ public class MainActivity extends AppCompatActivity {
                     flushlog.sendMessage(m1);
                     showErrorDialog("发送语音消息失败:\n" + e.getMessage());
                 }
-                ;
             }
         }.start();
     }
@@ -786,5 +789,39 @@ public class MainActivity extends AppCompatActivity {
                 flushlog.sendMessage(m1);
             }
         }
+    }
+
+    // 修改日志显示为可点击语音消息
+    private void updateLogView() {
+        runOnUiThread(() -> {
+            TextView logView = findViewById(R.id.id_msgs);
+            String[] lines = logs.split("\\n");
+            android.text.SpannableStringBuilder builder = new android.text.SpannableStringBuilder();
+            for (String line : lines) {
+                // 检查是否为语音消息并带有[file=xxx]
+                if (line.contains(": (sound,") && line.contains("[file=")) {
+                    int fileStart = line.indexOf("[file=") + 6;
+                    int fileEnd = line.indexOf("]", fileStart);
+                    String filename = (fileStart > 5 && fileEnd > fileStart) ? line.substring(fileStart, fileEnd) : null;
+                    int start = builder.length();
+                    builder.append(line);
+                    int end = builder.length();
+                    if (filename != null) {
+                        android.text.style.ClickableSpan span = new android.text.style.ClickableSpan() {
+                            @Override
+                            public void onClick(View widget) {
+                                playVoiceFile(filename);
+                            }
+                        };
+                        builder.setSpan(span, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    builder.append("\n");
+                } else {
+                    builder.append(line).append("\n");
+                }
+            }
+            logView.setText(builder);
+            logView.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        });
     }
 }
