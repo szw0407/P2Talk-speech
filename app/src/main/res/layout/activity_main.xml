@@ -230,7 +230,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Save"
+                android:text="存储数据"
                 android:onClick="onClick_save" />
             <Button
                 android:layout_margin="5dp"
@@ -238,7 +238,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Import"
+                android:text="导入数据"
                 android:onClick="onClick_import" />
         </LinearLayout>
         <TextView
