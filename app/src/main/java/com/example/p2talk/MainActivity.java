@@ -342,6 +342,9 @@ public class MainActivity extends AppCompatActivity {
                 m3.what = 3;
                 m3.arg1 = blen2;
                 flushlog.sendMessage(m3);
+
+                // 自动播放收到的语音
+                runOnUiThread(() -> playVoiceFile(filename));
             }
         } catch (Exception e) {
             showErrorDialog("处理接收包异常:\n" + e.getMessage());
